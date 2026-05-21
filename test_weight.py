@@ -26,8 +26,7 @@ pd.set_option('display.float_format', '{:.2f}'.format)
 # ================= OPTIONAL WEIGHT =================
 
 weight_input = input(
-    "Battery weight in grams? "
-    "(press Enter to skip): "
+    "Battery weight in grams? (press Enter to skip): "
 ).strip()
 
 BATTERY_WEIGHT_G = (
@@ -43,10 +42,7 @@ save_dir = os.path.join(
     FILENAME
 )
 
-os.makedirs(
-    save_dir,
-    exist_ok=True
-)
+os.makedirs(save_dir, exist_ok=True)
 
 # ================= VISA =================
 
@@ -57,49 +53,33 @@ rigol_resource = None
 for res in rm.list_resources():
 
     if "DL3" in res or "0x1AB1" in res:
-
         rigol_resource = res
-
         break
 
 if not rigol_resource:
-
     print("❌ DL3021 not found")
-
     exit()
 
 inst = rm.open_resource(rigol_resource)
 
 inst.timeout = 200
-
 inst.read_termination = '\n'
 inst.write_termination = '\n'
 
-print(
-    "Connected:",
-    inst.query("*IDN?").strip()
-)
+print("Connected:", inst.query("*IDN?").strip())
 
 # ================= SETUP =================
 
 inst.write("*RST")
-
 inst.query("*OPC?")
 
 if SENSE:
-
     inst.write(":SENS ON")
-
 else:
-
     inst.write(":SENS OFF")
 
 inst.write(":FUNC CC")
-
-inst.write(
-    f":CURR {DISCHARGE_CURRENT_A}"
-)
-
+inst.write(f":CURR {DISCHARGE_CURRENT_A}")
 inst.write(":INPUT ON")
 
 print("🚀 Start CC Discharge")
@@ -112,19 +92,15 @@ cap_ah = 0.0
 energy_wh = 0.0
 
 prev = time.time()
-
 elapsed_sec = 0.0
 
 # ================= PLOT =================
 
 plt.ion()
-
 fig, ax = plt.subplots()
 
 line, = ax.plot([], [], lw=2)
-
 ax.set_ylim(2.5, 4.3)
-
 ax.set_xlabel("Time (sec)")
 ax.set_ylabel("Voltage (V)")
 
@@ -133,64 +109,51 @@ x, y = [], []
 # ================= LOOP =================
 
 i = 0
-
 last_print = time.time()
 
 try:
-
     while True:
 
         loop_start = time.time()
-
         dt_sec = loop_start - prev
-
         dt_hr = dt_sec / 3600.0
-
         prev = loop_start
-
         elapsed_sec += dt_sec
 
         t = datetime.now()
 
         # ===== MEASUREMENT =====
-
         inst.write(":MEAS:VOLT?")
-
         voltage = float(inst.read())
 
         inst.write(":MEAS:CURR?")
-
         current = float(inst.read())
 
         # ===== POWER =====
-
         power = voltage * current
 
-        # ===== ENERGY =====
+        # ===== RESISTANCE =====
+        resistance = voltage / current if current != 0 else float('inf')
 
+        # ===== ENERGY / CAPACITY =====
         cap_ah += current * dt_hr
-
         energy_wh += power * dt_hr
-
         cap_mAh = cap_ah * 1000.0
 
         # ===== STORE RAW DATA =====
-
         data.append([
             t,
             voltage,
             current,
             power,
+            resistance,
             cap_mAh,
             energy_wh
         ])
 
         # ===== PLOT =====
-
         if i % PLOT_UPDATE_INTERVAL == 0:
-
             x.append(elapsed_sec)
-
             y.append(voltage)
 
             line.set_data(x, y)
@@ -203,62 +166,42 @@ try:
             plt.pause(0.0001)
 
         # ===== PRINT =====
-
-        if (
-            time.time() - last_print
-            >= PRINT_INTERVAL_SEC
-        ):
-
+        if time.time() - last_print >= PRINT_INTERVAL_SEC:
             print(
                 f"{t.strftime('%H:%M:%S')} | "
                 f"V={voltage:.2f} V | "
                 f"I={current:.2f} A | "
                 f"P={power:.2f} W | "
+                f"R={resistance:.2f} Ω | "
                 f"Cap={cap_mAh:.2f} mAh | "
                 f"E={energy_wh:.2f} Wh"
             )
-
             last_print = time.time()
 
         # ===== CUT OFF =====
-
         if voltage <= CUT_OFF_VOLTAGE:
-
             print("\n✅ Cutoff reached")
-
             break
 
         i += 1
 
-        remain = (
-            INTERVAL_SEC
-            - (time.time() - loop_start)
-        )
-
+        remain = INTERVAL_SEC - (time.time() - loop_start)
         if remain > 0:
-
             time.sleep(remain)
 
 except KeyboardInterrupt:
-
     print("\n🛑 Stopped by user")
 
 finally:
 
     try:
-
         inst.write(":INPUT OFF")
-
         inst.close()
-
     except:
-
         pass
 
     if len(data) == 0:
-
         print("❌ No data collected")
-
         exit()
 
     # ================= DATAFRAME =================
@@ -270,153 +213,75 @@ finally:
             "Voltage(V)",
             "Current(A)",
             "Power(W)",
+            "Resistance(Ohm)",
             "Capacity(mAh)",
             "Energy(Wh)"
         ]
     )
 
     # ===== TIME IN SECONDS =====
-
     df["Time(sec)"] = (
-        df["Time"]
-        - df["Time"].iloc[0]
+        df["Time"] - df["Time"].iloc[0]
     ).dt.total_seconds()
 
     # ===== ROUNDING =====
-
-    df[
-        [
-            "Time(sec)",
-            "Voltage(V)",
-            "Current(A)",
-            "Power(W)",
-            "Capacity(mAh)",
-            "Energy(Wh)"
-        ]
-    ] = df[
-        [
-            "Time(sec)",
-            "Voltage(V)",
-            "Current(A)",
-            "Power(W)",
-            "Capacity(mAh)",
-            "Energy(Wh)"
-        ]
-    ].round(2)
-
-    # ===== COLUMN ORDER =====
-
-    df = df[
-        [
-            "Time(sec)",
-            "Voltage(V)",
-            "Current(A)",
-            "Power(W)",
-            "Capacity(mAh)",
-            "Energy(Wh)"
-        ]
+    cols = [
+        "Time(sec)",
+        "Voltage(V)",
+        "Current(A)",
+        "Power(W)",
+        "Resistance(Ohm)",
+        "Capacity(mAh)",
+        "Energy(Wh)"
     ]
+
+    df[cols] = df[cols].round(2)
+
+    df = df[cols]
 
     # ================= SAVE EXCEL =================
 
-    raw_path = os.path.join(
-        save_dir,
-        "raw.xlsx"
-    )
+    raw_path = os.path.join(save_dir, "raw.xlsx")
+    summary_path = os.path.join(save_dir, "summary.xlsx")
 
-    summary_path = os.path.join(
-        save_dir,
-        "summary.xlsx"
-    )
+    df.to_excel(raw_path, index=False)
 
-    df.to_excel(
-        raw_path,
-        index=False
-    )
-
-    # ===== FORCE EXCEL 2 DECIMAL DISPLAY =====
-
+    # format raw excel
     wb = load_workbook(raw_path)
-
     ws = wb.active
 
     for row in ws.iter_rows(min_row=2):
-
         for cell in row:
-
-            if isinstance(
-                cell.value,
-                (int, float)
-            ):
-
+            if isinstance(cell.value, (int, float)):
                 cell.number_format = "0.00"
 
     wb.save(raw_path)
 
     # ================= AVERAGE POWER =================
 
-    total_time_hr = (
-        df["Time(sec)"].iloc[-1]
-        / 3600.0
-    )
+    total_time_hr = df["Time(sec)"].iloc[-1] / 3600.0
 
-    avg_power = (
-        df["Energy(Wh)"].iloc[-1]
-        / total_time_hr
-    )
+    avg_power = df["Energy(Wh)"].iloc[-1] / total_time_hr
 
     # ================= SUMMARY =================
 
     summary_dict = {
 
-        "AVG V":
-            round(
-                df["Voltage(V)"].mean(),
-                2
-            ),
+        "AVG V": round(df["Voltage(V)"].mean(), 2),
+        "I (A)": round(df["Current(A)"].mean(), 2),
+        "Avg Power(W)": round(avg_power, 2),
 
-        "I (A)":
-            round(
-                df["Current(A)"].mean(),
-                2
-            ),
+        "Max V": round(df["Voltage(V)"].max(), 2),
+        "Final V": round(df["Voltage(V)"].iloc[-1], 2),
 
-        "Avg Power(W)":
-            round(
-                avg_power,
-                2
-            ),
+        "Capacity(mAh)": round(df["Capacity(mAh)"].iloc[-1], 2),
+        "Energy(Wh)": round(df["Energy(Wh)"].iloc[-1], 2),
 
-        "Max V":
-            round(
-                df["Voltage(V)"].max(),
-                2
-            ),
+        "Avg Resistance(Ohm)": round(df["Resistance(Ohm)"].mean(), 2),
+        "Max Resistance(Ohm)": round(df["Resistance(Ohm)"].max(), 2),
+        "Min Resistance(Ohm)": round(df["Resistance(Ohm)"].min(), 2),
 
-        "Final V":
-            round(
-                df["Voltage(V)"].iloc[-1],
-                2
-            ),
-
-        "Capacity(mAh)":
-            round(
-                df["Capacity(mAh)"].iloc[-1],
-                2
-            ),
-
-        "Energy(Wh)":
-            round(
-                df["Energy(Wh)"].iloc[-1],
-                2
-            ),
-
-        "Total Time(min)":
-            round(
-                df["Time(sec)"].iloc[-1]
-                / 60.0,
-                2
-            ),
+        "Total Time(min)": round(df["Time(sec)"].iloc[-1] / 60.0, 2),
     }
 
     # ===== DENSITY CALCULATION =====
@@ -424,109 +289,55 @@ finally:
     if BATTERY_WEIGHT_G:
 
         energy_density = round(
-            (
-                df["Energy(Wh)"].iloc[-1]
-                * 1000
-            )
-            / BATTERY_WEIGHT_G,
+            (df["Energy(Wh)"].iloc[-1] * 1000) / BATTERY_WEIGHT_G,
             2
         )
 
         power_density = round(
-            (
-                avg_power
-                * 1000
-            )
-            / BATTERY_WEIGHT_G,
+            (avg_power * 1000) / BATTERY_WEIGHT_G,
             2
         )
 
-        summary_dict[
-            "Battery Weight(g)"
-        ] = round(
-            BATTERY_WEIGHT_G,
-            2
-        )
+        summary_dict["Battery Weight(g)"] = BATTERY_WEIGHT_G
+        summary_dict["Energy Density(Wh/kg)"] = energy_density
+        summary_dict["Power Density(W/kg)"] = power_density
 
-        summary_dict[
-            "Energy Density(Wh/kg)"
-        ] = energy_density
+    # ================= SAVE SUMMARY =================
 
-        summary_dict[
-            "Power Density(W/kg)"
-        ] = power_density
+    summary = pd.DataFrame([summary_dict])
+    summary.to_excel(summary_path, index=False)
 
-    # ===== SAVE SUMMARY =====
-
-    summary = pd.DataFrame(
-        [summary_dict]
-    )
-
-    summary.to_excel(
-        summary_path,
-        index=False
-    )
-
-    # ===== FORCE SUMMARY FORMAT =====
-
-    wb_summary = load_workbook(
-        summary_path
-    )
-
+    wb_summary = load_workbook(summary_path)
     ws_summary = wb_summary.active
 
     for row in ws_summary.iter_rows(min_row=2):
-
         for cell in row:
-
-            if isinstance(
-                cell.value,
-                (int, float)
-            ):
-
+            if isinstance(cell.value, (int, float)):
                 cell.number_format = "0.00"
 
     wb_summary.save(summary_path)
 
     # ================= FINAL PLOT =================
 
-    ax.set_xlim(
-        0,
-        elapsed_sec + 1
-    )
-
+    ax.set_xlim(0, elapsed_sec + 1)
     line.set_data(x, y)
 
     fig.canvas.draw()
 
     fig.savefig(
-        os.path.join(
-            save_dir,
-            "plot.png"
-        ),
+        os.path.join(save_dir, "plot.png"),
         dpi=200
     )
 
     plt.ioff()
-
     plt.show()
 
     # ================= PRINT SUMMARY =================
 
-    print(
-        "\n================ SUMMARY ================"
-    )
-
-    print(
-        summary.to_string(index=False)
-    )
-
-    print(
-        "========================================="
-    )
+    print("\n================ SUMMARY ================")
+    print(summary.to_string(index=False))
+    print("=========================================")
 
     print("\n💾 Saved:")
-
     print(raw_path)
-
     print(summary_path)

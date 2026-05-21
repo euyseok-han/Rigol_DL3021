@@ -20,7 +20,6 @@ CUT_OFF_VOLTAGE = 3.4
 
 SENSE = True
 
-# Display only 2 decimals
 pd.set_option('display.float_format', '{:.2f}'.format)
 
 # ================= OPTIONAL WEIGHT =================
@@ -29,19 +28,11 @@ weight_input = input(
     "Battery weight in grams? (press Enter to skip): "
 ).strip()
 
-BATTERY_WEIGHT_G = (
-    float(weight_input)
-    if weight_input
-    else None
-)
+BATTERY_WEIGHT_G = float(weight_input) if weight_input else None
 
 # ================= SAVE DIR =================
 
-save_dir = os.path.join(
-    OUTPUT_DIR,
-    FILENAME
-)
-
+save_dir = os.path.join(OUTPUT_DIR, FILENAME)
 os.makedirs(save_dir, exist_ok=True)
 
 # ================= VISA =================
@@ -49,9 +40,7 @@ os.makedirs(save_dir, exist_ok=True)
 rm = pyvisa.ResourceManager()
 
 rigol_resource = None
-
 for res in rm.list_resources():
-
     if "DL3" in res or "0x1AB1" in res:
         rigol_resource = res
         break
@@ -115,6 +104,7 @@ try:
     while True:
 
         loop_start = time.time()
+
         dt_sec = loop_start - prev
         dt_hr = dt_sec / 3600.0
         prev = loop_start
@@ -132,15 +122,15 @@ try:
         # ===== POWER =====
         power = voltage * current
 
-        # ===== RESISTANCE =====
-        resistance = voltage / current if current != 0 else float('inf')
+        # ===== RESISTANCE (FIXED) =====
+        resistance = voltage / current if abs(current) > 1e-6 else None
 
-        # ===== ENERGY / CAPACITY =====
+        # ===== CAPACITY / ENERGY =====
         cap_ah += current * dt_hr
         energy_wh += power * dt_hr
         cap_mAh = cap_ah * 1000.0
 
-        # ===== STORE RAW DATA =====
+        # ===== STORE RAW =====
         data.append([
             t,
             voltage,
@@ -172,7 +162,7 @@ try:
                 f"V={voltage:.2f} V | "
                 f"I={current:.2f} A | "
                 f"P={power:.2f} W | "
-                f"R={resistance:.2f} Ω | "
+                f"R={resistance if resistance is not None else 'NaN'} Ω | "
                 f"Cap={cap_mAh:.2f} mAh | "
                 f"E={energy_wh:.2f} Wh"
             )
@@ -219,10 +209,11 @@ finally:
         ]
     )
 
-    # ===== TIME IN SECONDS =====
-    df["Time(sec)"] = (
-        df["Time"] - df["Time"].iloc[0]
-    ).dt.total_seconds()
+    # ===== TIME =====
+    df["Time(sec)"] = (df["Time"] - df["Time"].iloc[0]).dt.total_seconds()
+
+    # ===== CLEAN RESISTANCE =====
+    df["Resistance(Ohm)"] = pd.to_numeric(df["Resistance(Ohm)"], errors="coerce")
 
     # ===== ROUNDING =====
     cols = [
@@ -236,17 +227,15 @@ finally:
     ]
 
     df[cols] = df[cols].round(2)
-
     df = df[cols]
 
-    # ================= SAVE EXCEL =================
+    # ================= SAVE RAW =================
 
     raw_path = os.path.join(save_dir, "raw.xlsx")
     summary_path = os.path.join(save_dir, "summary.xlsx")
 
     df.to_excel(raw_path, index=False)
 
-    # format raw excel
     wb = load_workbook(raw_path)
     ws = wb.active
 
@@ -257,10 +246,9 @@ finally:
 
     wb.save(raw_path)
 
-    # ================= AVERAGE POWER =================
+    # ================= AVG POWER =================
 
     total_time_hr = df["Time(sec)"].iloc[-1] / 3600.0
-
     avg_power = df["Energy(Wh)"].iloc[-1] / total_time_hr
 
     # ================= SUMMARY =================
@@ -277,30 +265,25 @@ finally:
         "Capacity(mAh)": round(df["Capacity(mAh)"].iloc[-1], 2),
         "Energy(Wh)": round(df["Energy(Wh)"].iloc[-1], 2),
 
-        "Avg Resistance(Ohm)": round(df["Resistance(Ohm)"].mean(), 2),
-        "Max Resistance(Ohm)": round(df["Resistance(Ohm)"].max(), 2),
-        "Min Resistance(Ohm)": round(df["Resistance(Ohm)"].min(), 2),
+        # 🔥 FIXED: ignore NaN automatically
+        "Avg Resistance(Ohm)": round(df["Resistance(Ohm)"].mean(skipna=True), 2),
+        "Max Resistance(Ohm)": round(df["Resistance(Ohm)"].max(skipna=True), 2),
+        "Min Resistance(Ohm)": round(df["Resistance(Ohm)"].min(skipna=True), 2),
 
         "Total Time(min)": round(df["Time(sec)"].iloc[-1] / 60.0, 2),
     }
 
-    # ===== DENSITY CALCULATION =====
+    # ================= DENSITY =================
 
     if BATTERY_WEIGHT_G:
 
-        energy_density = round(
-            (df["Energy(Wh)"].iloc[-1] * 1000) / BATTERY_WEIGHT_G,
-            2
-        )
-
-        power_density = round(
-            (avg_power * 1000) / BATTERY_WEIGHT_G,
-            2
-        )
-
         summary_dict["Battery Weight(g)"] = BATTERY_WEIGHT_G
-        summary_dict["Energy Density(Wh/kg)"] = energy_density
-        summary_dict["Power Density(W/kg)"] = power_density
+        summary_dict["Energy Density(Wh/kg)"] = round(
+            (df["Energy(Wh)"].iloc[-1] * 1000) / BATTERY_WEIGHT_G, 2
+        )
+        summary_dict["Power Density(W/kg)"] = round(
+            (avg_power * 1000) / BATTERY_WEIGHT_G, 2
+        )
 
     # ================= SAVE SUMMARY =================
 
@@ -324,15 +307,12 @@ finally:
 
     fig.canvas.draw()
 
-    fig.savefig(
-        os.path.join(save_dir, "plot.png"),
-        dpi=200
-    )
+    fig.savefig(os.path.join(save_dir, "plot.png"), dpi=200)
 
     plt.ioff()
     plt.show()
 
-    # ================= PRINT SUMMARY =================
+    # ================= PRINT =================
 
     print("\n================ SUMMARY ================")
     print(summary.to_string(index=False))

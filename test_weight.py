@@ -127,7 +127,6 @@ try:
 
         # ===== STORE RAW (SEC 유지) =====
         data.append([
-            t,
             elapsed_sec,   # 🔥 RAW seconds 그대로 저장
             voltage,
             current,
@@ -195,7 +194,6 @@ finally:
     df = pd.DataFrame(
         data,
         columns=[
-            "Time",
             "Time(sec)",   # 🔥 RAW sec
             "Voltage(V)",
             "Current(A)",

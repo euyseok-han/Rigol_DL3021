@@ -152,12 +152,13 @@ try:
 
         # ===== PRINT =====
         if time.time() - last_print >= PRINT_INTERVAL_SEC:
+            res_str = f"{resistance:.2f} Ω" if resistance is not None else "NaN Ω"
             print(
                 f"{t.strftime('%H:%M:%S')} | "
                 f"V={voltage:.2f} V | "
                 f"I={current:.2f} A | "
                 f"P={power:.2f} W | "
-                f"R={resistance if resistance is not None else 'NaN'} Ω | "
+                f"R={res_str} | "
                 f"Cap={cap_mAh:.2f} mAh | "
                 f"E={energy_wh:.2f} Wh"
             )

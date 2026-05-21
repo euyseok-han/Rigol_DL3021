@@ -24,10 +24,7 @@ pd.set_option('display.float_format', '{:.2f}'.format)
 
 # ================= OPTIONAL WEIGHT =================
 
-weight_input = input(
-    "Battery weight in grams? (press Enter to skip): "
-).strip()
-
+weight_input = input("Battery weight in grams? (press Enter to skip): ").strip()
 BATTERY_WEIGHT_G = float(weight_input) if weight_input else None
 
 # ================= SAVE DIR =================
@@ -62,10 +59,7 @@ print("Connected:", inst.query("*IDN?").strip())
 inst.write("*RST")
 inst.query("*OPC?")
 
-if SENSE:
-    inst.write(":SENS ON")
-else:
-    inst.write(":SENS OFF")
+inst.write(":SENS ON" if SENSE else ":SENS OFF")
 
 inst.write(":FUNC CC")
 inst.write(f":CURR {DISCHARGE_CURRENT_A}")
@@ -89,8 +83,9 @@ plt.ion()
 fig, ax = plt.subplots()
 
 line, = ax.plot([], [], lw=2)
+
 ax.set_ylim(2.5, 4.3)
-ax.set_xlabel("Time (sec)")
+ax.set_xlabel("Time (min)")
 ax.set_ylabel("Voltage (V)")
 
 x, y = [], []
@@ -122,7 +117,7 @@ try:
         # ===== POWER =====
         power = voltage * current
 
-        # ===== RESISTANCE (FIXED) =====
+        # ===== RESISTANCE =====
         resistance = voltage / current if abs(current) > 1e-6 else None
 
         # ===== CAPACITY / ENERGY =====
@@ -130,9 +125,10 @@ try:
         energy_wh += power * dt_hr
         cap_mAh = cap_ah * 1000.0
 
-        # ===== STORE RAW =====
+        # ===== STORE RAW (SEC 유지) =====
         data.append([
             t,
+            elapsed_sec,   # 🔥 RAW seconds 그대로 저장
             voltage,
             current,
             power,
@@ -141,16 +137,16 @@ try:
             energy_wh
         ])
 
-        # ===== PLOT =====
+        # ===== PLOT (MINUTE) =====
         if i % PLOT_UPDATE_INTERVAL == 0:
-            x.append(elapsed_sec)
+            x.append(elapsed_sec / 60.0)   # 🔥 min 변환
             y.append(voltage)
 
             line.set_data(x, y)
 
             ax.set_xlim(
-                max(0, elapsed_sec - 30),
-                elapsed_sec + 1
+                max(0, (elapsed_sec - 30) / 60.0),
+                (elapsed_sec / 60.0) + 0.1
             )
 
             plt.pause(0.0001)
@@ -200,6 +196,7 @@ finally:
         data,
         columns=[
             "Time",
+            "Time(sec)",   # 🔥 RAW sec
             "Voltage(V)",
             "Current(A)",
             "Power(W)",
@@ -209,10 +206,7 @@ finally:
         ]
     )
 
-    # ===== TIME =====
-    df["Time(sec)"] = (df["Time"] - df["Time"].iloc[0]).dt.total_seconds()
-
-    # ===== CLEAN RESISTANCE =====
+    # ===== CLEAN =====
     df["Resistance(Ohm)"] = pd.to_numeric(df["Resistance(Ohm)"], errors="coerce")
 
     # ===== ROUNDING =====
@@ -227,7 +221,6 @@ finally:
     ]
 
     df[cols] = df[cols].round(2)
-    df = df[cols]
 
     # ================= SAVE RAW =================
 
@@ -265,15 +258,12 @@ finally:
         "Capacity(mAh)": round(df["Capacity(mAh)"].iloc[-1], 2),
         "Energy(Wh)": round(df["Energy(Wh)"].iloc[-1], 2),
 
-        # 🔥 FIXED: ignore NaN automatically
         "Avg Resistance(Ohm)": round(df["Resistance(Ohm)"].mean(skipna=True), 2),
-        "Max Resistance(Ohm)": round(df["Resistance(Ohm)"].max(skipna=True), 2),
-        "Min Resistance(Ohm)": round(df["Resistance(Ohm)"].min(skipna=True), 2),
+        # "Max Resistance(Ohm)": round(df["Resistance(Ohm)"].max(skipna=True), 2),
+        # "Min Resistance(Ohm)": round(df["Resistance(Ohm)"].min(skipna=True), 2),
 
         "Total Time(min)": round(df["Time(sec)"].iloc[-1] / 60.0, 2),
     }
-
-    # ================= DENSITY =================
 
     if BATTERY_WEIGHT_G:
 
@@ -285,28 +275,15 @@ finally:
             (avg_power * 1000) / BATTERY_WEIGHT_G, 2
         )
 
-    # ================= SAVE SUMMARY =================
-
     summary = pd.DataFrame([summary_dict])
     summary.to_excel(summary_path, index=False)
 
-    wb_summary = load_workbook(summary_path)
-    ws_summary = wb_summary.active
-
-    for row in ws_summary.iter_rows(min_row=2):
-        for cell in row:
-            if isinstance(cell.value, (int, float)):
-                cell.number_format = "0.00"
-
-    wb_summary.save(summary_path)
-
     # ================= FINAL PLOT =================
 
-    ax.set_xlim(0, elapsed_sec + 1)
+    ax.set_xlim(0, (elapsed_sec / 60.0) + 0.1)
     line.set_data(x, y)
 
     fig.canvas.draw()
-
     fig.savefig(os.path.join(save_dir, "plot.png"), dpi=200)
 
     plt.ioff()

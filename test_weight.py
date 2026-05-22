@@ -247,7 +247,7 @@ finally:
 
     summary_dict = {
 
-        "AVG V": round(df["Voltage(V)"].mean(), 2),
+        "Avg V": round(df["Voltage(V)"].mean(), 2),
         "I (A)": round(df["Current(A)"].mean(), 2),
         "Avg Power(W)": round(avg_power, 2),
 

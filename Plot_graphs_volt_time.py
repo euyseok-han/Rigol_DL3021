@@ -43,20 +43,23 @@ for i, file in enumerate(files):
         x,
         y,
 
-        # Smooth-looking continuous line
-        linewidth=1.8,
+        # Smoother line
+        linewidth=1.5,
 
-        # Marker settings
+        # Marker style
         marker=markers[i % len(markers)],
-        markersize=4,
 
-        # Show marker every N points only
-        markevery=max(len(x) // 40, 1),
+        # Smaller markers
+        markersize=2.5,
+
+        # MUCH denser markers
+        markevery=max(len(x) // 200, 1),
 
         # Line style variation
         linestyle=linestyles[i % len(linestyles)],
 
         alpha=0.9,
+
         label=label
     )
 

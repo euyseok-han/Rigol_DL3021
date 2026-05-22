@@ -3,28 +3,33 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 
 # ====================== CONFIG ======================
-directory = Path(r'./test_result')
 
-# Find all raw.xlsx files inside subdirectories
-files = sorted(directory.glob("*/raw.xlsx"))
+directory = Path(r'./battery_test_results')
 
-# ====================== STYLES ======================
+# Output files
+graph_output = directory / "combined_plot.png"
+summary_output = directory / "combined_summary.xlsx"
 
-# Distinct marker styles
+# Find all raw.xlsx and summary.xlsx files
+raw_files = sorted(directory.glob("*/raw.xlsx"))
+summary_files = sorted(directory.glob("*/summary.xlsx"))
+
+# ====================== GRAPH STYLES ======================
+
 markers = [
     'o', 's', '^', 'D', 'v', 'P', 'X', '<', '>',
     'p', 'h', '*', 'd'
 ]
 
-# Distinct line styles
 linestyles = [
     '-', '--', '-.', ':'
 ]
 
-# Create figure
+# ====================== PLOT GRAPH ======================
+
 plt.figure(figsize=(12, 7))
 
-for i, file in enumerate(files):
+for i, file in enumerate(raw_files):
 
     # Read raw.xlsx
     df = pd.read_excel(file)
@@ -35,7 +40,7 @@ for i, file in enumerate(files):
     # Voltage(V)
     y = df.iloc[:, 1]
 
-    # Use subdirectory name as label
+    # Subdirectory name
     label = file.parent.name
 
     # Plot
@@ -43,19 +48,13 @@ for i, file in enumerate(files):
         x,
         y,
 
-        # Smoother line
         linewidth=1.5,
 
-        # Marker style
         marker=markers[i % len(markers)],
-
-        # Smaller markers
         markersize=2.5,
 
-        # MUCH denser markers
         markevery=max(len(x) // 200, 1),
 
-        # Line style variation
         linestyle=linestyles[i % len(linestyles)],
 
         alpha=0.9,
@@ -72,12 +71,40 @@ plt.ylim(3.0, 4.3)
 
 plt.title("Voltage vs Time (Multiple Tests)", fontsize=14)
 
-# Better legend
 plt.legend(fontsize=9, loc='best')
 
-# Cleaner grid
 plt.grid(True, linestyle='--', alpha=0.35)
 
 plt.tight_layout()
 
+# Save graph
+plt.savefig(graph_output, dpi=300)
+
+# Show graph
 plt.show()
+
+print(f"\n✅ Graph saved:")
+print(graph_output)
+
+# ====================== MERGE SUMMARY FILES ======================
+
+summary_list = []
+
+for file in summary_files:
+
+    # Read summary.xlsx
+    df = pd.read_excel(file)
+
+    # Add directory name column
+    df.insert(0, "Test_Name", file.parent.name)
+
+    summary_list.append(df)
+
+# Vertical stack
+combined_summary = pd.concat(summary_list, ignore_index=True)
+
+# Save merged summary
+combined_summary.to_excel(summary_output, index=False)
+
+print(f"\n✅ Combined summary saved:")
+print(summary_output)

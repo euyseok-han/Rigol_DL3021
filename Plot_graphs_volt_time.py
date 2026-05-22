@@ -2,34 +2,40 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from pathlib import Path
 
-# ====================== 설정 ======================
-directory = r'./test_result'
+# ====================== CONFIG ======================
+directory = Path(r'./test_result')
 
-# 폴더 내 모든 xlsx 파일 가져오기
-files = sorted(Path(directory).glob("*.xlsx"))
+# Find all raw.xlsx files inside subdirectories
+files = sorted(directory.glob("*/raw.xlsx"))
 
-# ==================== markers 확장 ====================
+# ====================== MARKERS ======================
 markers = [
     'o', 's', '^', 'D', 'x', '*', 'v', '+', 'p', 'h',
     '<', '>', 'P', 'H', 'X', 'd', '|', '_',
     '1', '2', '3', '4'
 ]
 
-# 그래프 생성
+# Create figure
 plt.figure(figsize=(11, 7))
 
 for i, file in enumerate(files):
 
+    # Read raw.xlsx
     df = pd.read_excel(file)
-    
-    # 초 → 분 변환
-    x = df.iloc[:, 0] / 60.0
-    y = df.iloc[:, 1]
-    
-    label = file.stem
 
+    # First column = Time(sec)
+    x = df.iloc[:, 0] / 60.0   # Convert sec -> min
+
+    # Second column = Voltage(V)
+    y = df.iloc[:, 1]
+
+    # Use subdirectory name as legend label
+    label = file.parent.name
+
+    # Plot graph
     plt.plot(
-        x, y,
+        x,
+        y,
         marker=markers[i % len(markers)],
         markersize=1.5,
         linewidth=0.7,
@@ -37,15 +43,19 @@ for i, file in enumerate(files):
         label=label
     )
 
-# ==================== 그래프 설정 ====================
+# ====================== GRAPH SETTINGS ======================
+
 plt.xlabel("Time (min)")
 plt.ylabel("Voltage (V)")
 
 plt.ylim(3.0, 4.3)
+
 plt.title("Voltage vs Time (Multiple Tests)")
 
 plt.legend(fontsize=9, loc='best')
+
 plt.grid(True, linestyle='--', alpha=0.5)
 
 plt.tight_layout()
+
 plt.show()
